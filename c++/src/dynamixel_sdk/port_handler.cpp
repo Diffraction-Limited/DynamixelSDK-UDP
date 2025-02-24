@@ -19,6 +19,7 @@
 #if defined(__linux__)
 #include "port_handler.h"
 #include "port_handler_linux.h"
+#include "port_handler_udp.h"
 #elif defined(__APPLE__)
 #include "port_handler.h"
 #include "port_handler_mac.h"
@@ -26,6 +27,7 @@
 #define WINDLLEXPORT
 #include "port_handler.h"
 #include "port_handler_windows.h"
+#include "port_handler_udp.h" 
 #elif defined(ARDUINO) || defined(__OPENCR__) || defined(__OPENCM904__) || defined(ARDUINO_OpenRB)
 #include "../../include/dynamixel_sdk/port_handler.h"
 #include "../../include/dynamixel_sdk/port_handler_arduino.h"
@@ -35,6 +37,18 @@ using namespace dynamixel;
 
 PortHandler *PortHandler::getPortHandler(const char *port_name)
 {
+#if defined(__linux__) || defined(_WIN32) || defined(_WIN64)
+  // Attempt to create a UDP port if the port_name is a valid UDP address
+  try
+  {
+    return (PortHandler *)(new PortHandlerUDP(port_name));
+  }
+  catch(const std::exception& e)
+  {
+    // Note: fall back to usual port handlers if the port_name is not a valid UDP address
+  }
+#endif
+
 #if defined(__linux__)
   return (PortHandler *)(new PortHandlerLinux(port_name));
 #elif defined(__APPLE__)

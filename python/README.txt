@@ -1,1 +1,1 @@
-Description is available at http://emanual.robotis.com/docs/en/software/dynamixel/dynamixel_sdk/overview/
+Description is available at https://github.com/Diffraction-Limited/DynamixelSDK-UDP
