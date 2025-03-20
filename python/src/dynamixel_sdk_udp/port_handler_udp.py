@@ -26,19 +26,21 @@ import socket
 import threading
 
 LATENCY_TIMER = 16
-DEFAULT_BAUDRATE = 1000000
+DEFAULT_BAUDRATE = 9600
 DEFAULT_PORT = 6464
 
 class PortHandlerUDP(object):
 
     # A worker class to handle the UDP communication asynchronously
     class Worker(object):
-        def __init__(self, src_ip, src_port):
+        def __init__(self, src_ip, src_port, host_ip = "192.168.42.2", host_port = 6464):
             self.ip_address = src_ip
             self.port = src_port
             self.rx_socket = None
             self.ready = False
             self.abort = False
+            self.host_ip = host_ip
+            self.host_port = host_port
 
             # existing initialization code
             self.queue_lock = threading.Lock()
@@ -87,13 +89,18 @@ class PortHandlerUDP(object):
         def getBytesWaiting(self):
             with self.queue_lock:
                 if len(self.incoming_queue) > 0:
-                    return len(self.incoming_queue[0])
+                    data = self.incoming_queue[0]
+                    value = len(data)
+                    if len(data) >= 4:
+                        value = int.from_bytes(data[:4], byteorder='big', signed=False)
+                    return value
 
         def _listen_for_messages(self):
             # bind to a random Rx port on all addresses
-            self.rx_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.rx_socket.bind(('', 0))
-            self.rx_socket.settimeout(1.0)
+            self.rx_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            self.rx_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.rx_socket.bind((self.host_ip, self.host_port))
+            self.rx_socket.settimeout(5.0)
 
             # let the main thread know we're ready to start listening
             with self.queue_lock:
@@ -116,15 +123,18 @@ class PortHandlerUDP(object):
             # let the main thread know we're done
             with self.queue_lock:
                 self.ready = False
+                self.abort = False
 
-
-    def __init__(self, port_name):
+    def __init__(self, port_name, host_ip="192.168.42.2", host_port=6464):
         self.is_open = False
         self.baudrate = DEFAULT_BAUDRATE
         self.port_name = port_name
         self.packet_start_time = 0.0
         self.packet_timeout = 0.0
         self.tx_time_per_byte = 0.0
+        self.host_ip = host_ip
+        self.host_port = host_port
+        self.gateway_port = host_port
         self.is_using = False
 
         # extract IP and port number from port_name
@@ -135,7 +145,7 @@ class PortHandlerUDP(object):
         if self.is_open:
             return True
         
-        self.worker = self.Worker(self.ip_address, self.port)
+        self.worker = self.Worker(self.ip_address, self.port, self.host_ip, self.host_port)
         self.worker.start()
         while not self.worker.isReady():
             time.sleep(0.1)
@@ -167,6 +177,10 @@ class PortHandlerUDP(object):
         
         self.port_name = port_name
 
+    def setHost(self, host_ip, host_port):
+        self.host_ip = host_ip
+        self.host_port = host_port
+
     def getPortName(self):
         return self.port_name
 
@@ -187,6 +201,11 @@ class PortHandlerUDP(object):
 
         data = self.worker.getPacket(length)
         if data is not None:
+            data_length = int.from_bytes(data[:4], byteorder='big', signed=False)
+            data = data[4:4 + data_length]
+
+            # print(f'rx {data_length} bytes: {" ".join(f"{byte:02X}" for byte in data)}')
+
             data = list(data)
         if data is None:
             return []
@@ -197,6 +216,7 @@ class PortHandlerUDP(object):
             self.worker.start()
 
         self.worker.send(packet)
+        print(f'tx {len(packet)} bytes: {" ".join(f"{byte:02X}" for byte in packet)}')
         return len(packet)
 
     def setPacketTimeout(self, packet_length):
@@ -208,13 +228,14 @@ class PortHandlerUDP(object):
         self.packet_timeout = msec
 
     def isPacketTimeout(self):
-        if self.getTimeSinceStart() > self.packet_timeout:
+        if self.getTimeSinceStart() > 200: # wait 200ms for a response. was: self.packet_timeout
             self.packet_timeout = 0
             return True
 
         return False
 
     def getCurrentTime(self):
+        '''Returns the timestamp in milliseconds'''
         return round(time.time() * 1000000000) / 1000000.0
 
     def getTimeSinceStart(self):
@@ -223,3 +244,6 @@ class PortHandlerUDP(object):
             self.packet_start_time = self.getCurrentTime()
 
         return time_since
+
+    def isOpen(self):
+        return self.is_open
