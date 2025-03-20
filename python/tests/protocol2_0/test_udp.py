@@ -325,7 +325,7 @@ def dxl_write_goal_position(dxl_id, pos):
 dxl_write_torque(DXL_ID, 1)
 time.sleep(2)
 
-# Move to five random positions and ensure the Dynamixel reaches each position
+# Starting at position 0, rotate the Dynamixel in 512-step increments indefinitely
 pos = 0
 while True:  # Adjust the range for the desired number of iterations
     print(f"Moving to position {pos}...")
